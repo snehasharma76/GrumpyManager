@@ -56,7 +56,7 @@ class SheetsManager:
         # Task Log headers
         task_headers = [
             'Task_ID', 'Task_Description', 'Assigned_To_User', 'Priority', 
-            'Category', 'Date_Created', 'Status', 'Date_Completed'
+            'Category', 'Date_Created', 'Status', 'Date_Completed', 'Due_Date'
         ]
         
         # OKR Log headers
@@ -82,7 +82,7 @@ class SheetsManager:
         if not self.daily_progress_log.get_all_values():
             self.daily_progress_log.append_row(progress_headers)
     
-    def add_task(self, task_description, assigned_to, priority, category="General"):
+    def add_task(self, task_description, assigned_to, priority, category="General", due_date=None):
         """
         Add a new task to the Task_Log sheet.
         
@@ -91,6 +91,7 @@ class SheetsManager:
             assigned_to (str): Telegram username of the person assigned to the task
             priority (str): Priority level (P1, P2, P3)
             category (str, optional): Task category. Defaults to "General".
+            due_date (str, optional): Due date for the task in YYYY-MM-DD format. Defaults to None.
         
         Returns:
             str: The ID of the newly created task
@@ -110,7 +111,8 @@ class SheetsManager:
             category,
             current_date,
             'Open',  # Initial status is always Open
-            ''  # Date_Completed is empty initially
+            '',      # Date_Completed is empty initially
+            due_date if due_date else ''  # Due date (can be empty)
         ]
         
         # Append the new task to the sheet
@@ -159,7 +161,8 @@ class SheetsManager:
                             'Status': task.get('Status', status),
                             'Assigned_To_User': task.get('Assigned_To_User', username),
                             'Date_Added': task.get('Date_Added', ''),
-                            'Date_Completed': task.get('Date_Completed', '')
+                            'Date_Completed': task.get('Date_Completed', ''),
+                            'Due_Date': task.get('Due_Date', '')
                         }
                         user_tasks.append(clean_task)
                 except Exception as e:
@@ -206,7 +209,8 @@ class SheetsManager:
                             'Status': 'Open',
                             'Assigned_To_User': username,
                             'Date_Added': task.get('Date_Added', ''),
-                            'Date_Completed': task.get('Date_Completed', '')
+                            'Date_Completed': task.get('Date_Completed', ''),
+                            'Due_Date': task.get('Due_Date', '')
                         }
                         open_tasks.append(clean_task)
                 except Exception as e:

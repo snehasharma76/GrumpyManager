@@ -28,17 +28,25 @@ class TaskManager:
     
     def parse_task_command(self, command_text):
         """
-        Parse a task command to extract priority, description, and category.
-        Format: /task [Priority] [Task Description] -c [Category]
+        Parse a task command to extract priority, description, category, and due date.
+        Format: /task [Priority] [Task Description] -c [Category] -d [Due Date]
         
         Args:
             command_text (str): The full command text
         
         Returns:
-            tuple: (priority, description, category) or None if invalid format
+            tuple: (priority, description, category, due_date) or None if invalid format
         """
         # Remove the '/task' command prefix
         text = command_text.replace('/task', '', 1).strip()
+        
+        # Extract due date if present
+        due_date = None
+        due_date_match = re.search(r'-d\s+(\d{4}-\d{2}-\d{2})', text)
+        if due_date_match:
+            due_date = due_date_match.group(1)
+            # Remove the due date part from the text
+            text = re.sub(r'-d\s+\d{4}-\d{2}-\d{2}', '', text).strip()
         
         # Check if the text starts with a valid priority
         priority_match = re.match(r'^(P[123])\s+(.+?)(?:\s+-c\s+(.+))?$', text)
@@ -50,7 +58,7 @@ class TaskManager:
         description = priority_match.group(2).strip()
         category = priority_match.group(3) if priority_match.group(3) else "General"
         
-        return priority, description, category
+        return priority, description, category, due_date
     
     def add_task(self, username, command_text):
         """
@@ -67,16 +75,17 @@ class TaskManager:
         parsed = self.parse_task_command(command_text)
         
         if not parsed:
-            return False, "Invalid format. Please use: `/task [Priority] [Description] -c [Category]`\nPriority must be P1, P2, or P3."
+            return False, "Invalid format. Please use: `/task [Priority] [Description] -c [Category] -d [YYYY-MM-DD]`\nPriority must be P1, P2, or P3."
         
-        priority, description, category = parsed
+        priority, description, category, due_date = parsed
         
         # Add the task to the sheet
-        task_id = self.sheets_manager.add_task(description, username, priority, category)
+        task_id = self.sheets_manager.add_task(description, username, priority, category, due_date)
         
         # Return success message
         priority_emoji = TASK_PRIORITIES.get(priority, '')
-        return True, f"Task added: {priority_emoji} {description} (Category: {category})"
+        due_date_msg = f" (Due: {due_date})" if due_date else ""
+        return True, f"Task added: {priority_emoji} {description} (Category: {category}){due_date_msg}"
     
     def get_user_tasks_message(self, username):
         """
@@ -119,18 +128,23 @@ class TaskManager:
                 priority = task.get('Priority', 'P3')
                 description = task.get('Task_Description', 'Untitled Task')
                 category = task.get('Category', 'General')
+                due_date = task.get('Due_Date', '')
                 
-                # Add to sorted list with priority
-                sorted_tasks.append((priority, task_id, description, category))
+                # Add to sorted list with priority and due date
+                sorted_tasks.append((priority, task_id, description, category, due_date))
             
             # Sort by priority
             sorted_tasks.sort(key=lambda x: x[0])
             
             # Process sorted tasks
-            for priority, task_id, description, category in sorted_tasks:
+            for priority, task_id, description, category, due_date in sorted_tasks:
                 priority_emoji = TASK_PRIORITIES.get(priority, '⚪')
                 task_text = f"{priority_emoji} {description}"
-                message += f"• {task_text} _{category}_\n"
+                
+                # Add due date if available
+                due_date_text = f" (Due: {due_date})" if due_date else ""
+                
+                message += f"• {task_text} _{category}_{due_date_text}\n"
                 
                 # Truncate description if too long
                 if len(description) > 20:
@@ -151,6 +165,96 @@ class TaskManager:
             import logging
             logging.error(f"Error in get_user_tasks_message: {str(e)}")
             return f"Error retrieving tasks: {str(e)}", None
+    
+    def get_due_tasks_message(self):
+        """
+        Get a formatted message with all open tasks sorted by due date.
+        
+        Returns:
+            tuple: (message_text, inline_keyboard_markup)
+        """
+        try:
+            import logging
+            from datetime import datetime
+            
+            # Get all open tasks
+            tasks = self.sheets_manager.get_all_open_tasks()
+            
+            if not tasks:
+                return "There are no open tasks with due dates.", None
+            
+            # Filter tasks with due dates and sort them
+            due_tasks = [task for task in tasks if task.get('Due_Date')]
+            
+            if not due_tasks:
+                return "There are no tasks with due dates set.", None
+            
+            # Sort tasks by due date (closest first)
+            try:
+                # Convert string dates to datetime objects for sorting
+                for task in due_tasks:
+                    if task['Due_Date']:
+                        try:
+                            task['_due_date_obj'] = datetime.strptime(task['Due_Date'], '%Y-%m-%d')
+                        except ValueError:
+                            task['_due_date_obj'] = datetime.max  # Far future for invalid dates
+                    else:
+                        task['_due_date_obj'] = datetime.max  # Far future for tasks with no due date
+                
+                # Sort by due date
+                due_tasks.sort(key=lambda x: x['_due_date_obj'])
+            except Exception as e:
+                logging.error(f"Error sorting tasks by due date: {str(e)}")
+                # If sorting fails, continue with unsorted tasks
+            
+            # Create message text
+            message = "*Tasks By Due Date*\n\n"
+            
+            # Create inline keyboard buttons
+            keyboard = []
+            
+            # Group tasks by due date
+            current_date = None
+            for task in due_tasks:
+                due_date = task.get('Due_Date', '')
+                
+                # Add date header if it's a new date
+                if due_date != current_date:
+                    current_date = due_date
+                    message += f"\n*Due: {due_date}*\n"
+                
+                # Get task details
+                username = task.get('Assigned_To_User', 'unassigned')
+                priority = task.get('Priority', 'P3')
+                description = task.get('Task_Description', 'Untitled Task')
+                category = task.get('Category', 'General')
+                task_id = task.get('Task_ID', 'unknown')
+                
+                # Format task
+                priority_emoji = TASK_PRIORITIES.get(priority, '⚪')
+                task_text = f"{priority_emoji} {description}"
+                message += f"• {task_text} (@{username}) _{category}_\n"
+                
+                # Truncate description if too long
+                if len(description) > 15:
+                    display_desc = description[:15] + '...'
+                else:
+                    display_desc = description
+                
+                # Add a button to mark the task as done
+                keyboard.append([
+                    InlineKeyboardButton(
+                        f"✓ {display_desc} ({username})",
+                        callback_data=f"done:{task_id}"
+                    )
+                ])
+            
+            return message, InlineKeyboardMarkup(keyboard)
+            
+        except Exception as e:
+            import logging
+            logging.error(f"Error in get_due_tasks_message: {str(e)}")
+            return f"Error retrieving tasks by due date: {str(e)}", None
     
     def get_all_open_tasks_message(self):
         """
@@ -181,6 +285,7 @@ class TaskManager:
                 priority = task.get('Priority', 'P3')
                 description = task.get('Task_Description', 'Untitled Task')
                 category = task.get('Category', 'General')
+                due_date = task.get('Due_Date', '')
                 
                 # Create a clean task object with defaults
                 clean_task = {
@@ -188,7 +293,8 @@ class TaskManager:
                     'Assigned_To_User': username,
                     'Priority': priority,
                     'Task_Description': description,
-                    'Category': category
+                    'Category': category,
+                    'Due_Date': due_date
                 }
                 
                 if username not in user_tasks:
@@ -199,13 +305,14 @@ class TaskManager:
             sorted_users = sorted(user_tasks.keys())
             
             # Create message text
-            message = "*All Open Tasks*\n\n"
+            message = "**All Open Tasks**\n\n"
             
             # Create inline keyboard buttons
             keyboard = []
             
             for username in sorted_users:
-                message += f"*@{username}*:\n"
+                # Use a more reliable formatting for usernames
+                message += f"\n**@{username}**:\n"
                 
                 # Sort tasks by priority (P1 first)
                 user_tasks[username].sort(key=lambda x: x['Priority'])
@@ -213,7 +320,14 @@ class TaskManager:
                 for task in user_tasks[username]:
                     priority_emoji = TASK_PRIORITIES.get(task['Priority'], '⚪')
                     task_text = f"{priority_emoji} {task['Task_Description']}"
-                    message += f"* {task_text} _{task['Category']}_\n"
+                    
+                    # Add due date if available
+                    due_date_text = f" (Due: {task['Due_Date']})" if task['Due_Date'] else ""
+                    
+                    # Escape any potential problematic characters in task description and category
+                    # Use proper Markdown formatting with clear boundaries
+                    message += f"• {task_text} _{task['Category']}_"
+                    message += f"{due_date_text}\n"
                     
                     # Truncate description if too long
                     description = task['Task_Description']
@@ -225,8 +339,8 @@ class TaskManager:
                     # Add a button to mark the task as done
                     keyboard.append([
                         InlineKeyboardButton(
-                            f"* @{username}: Mark '{display_desc}' as Done", 
-                            callback_data=f"done_{task['Task_ID']}"
+                            f"✓ {display_desc} ({username})", 
+                            callback_data=f"done:{task['Task_ID']}"
                         )
                     ])
                 

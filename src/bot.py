@@ -73,6 +73,8 @@ class InternBot:
         self.dispatcher.add_handler(CommandHandler("help", self.help_command))
         self.dispatcher.add_handler(CommandHandler("task", self.task_command))
         self.dispatcher.add_handler(CommandHandler("mytasks", self.mytasks_command))
+        self.dispatcher.add_handler(CommandHandler("alltasks", self.alltasks_command))
+        self.dispatcher.add_handler(CommandHandler("duetasks", self.duetasks_command))
         self.dispatcher.add_handler(CommandHandler("syncokrs", self.syncokrs_command))
         
         # Callback query handler for buttons
@@ -146,10 +148,14 @@ class InternBot:
         help_text = (
             "*InternBot - Your Startup Accountability Partner*\n\n"
             "*Commands:*\n"
-            "• `/task [Priority] [Description] -c [Category]` - Add a new task\n"
+            "• `/task [Priority] [Description] -c [Category] -d [YYYY-MM-DD]` - Add a new task\n"
             "  Priority must be P1 (High), P2 (Medium), or P3 (Low)\n"
-            "  Example: `/task P1 Draft investor email -c Partnerships`\n\n"
+            "  Category is optional (default: General)\n"
+            "  Due date is optional in YYYY-MM-DD format\n"
+            "  Example: `/task P1 Draft investor email -c Partnerships -d 2025-07-05`\n\n"
             "• `/mytasks` - View your open tasks\n\n"
+            "• `/alltasks` - View all team members' tasks\n\n"
+            "• `/duetasks` - View tasks sorted by due date\n\n"
             "• `/syncokrs` - Sync OKRs from the Google Sheet\n\n"
             "*Daily Schedule (IST):*\n"
             "• *10:00 AM* - Daily planning reminder\n"
@@ -215,6 +221,62 @@ class InternBot:
             update.message.reply_text(
                 "Sorry, something went wrong. Please try again later."
             )
+            
+    def alltasks_command(self, update: Update, context: CallbackContext):
+        """Handle the /alltasks command to view all users' tasks."""
+        try:
+            # Log the request
+            username = update.effective_user.username
+            logging.info(f"User {username} requested all tasks")
+            
+            try:
+                # Get all tasks
+                message, reply_markup = self.task_manager.get_all_open_tasks_message()
+                
+                # Reply with the tasks
+                update.message.reply_text(
+                    message, 
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=reply_markup
+                )
+            except Exception as e:
+                logging.error(f"Error getting all tasks: {str(e)}")
+                update.message.reply_text(
+                    f"Error retrieving all tasks: {str(e)}"
+                )
+        except Exception as e:
+            logging.error(f"Error in alltasks_command: {str(e)}")
+            update.message.reply_text(
+                "Sorry, something went wrong. Please try again later."
+            )
+            
+    def duetasks_command(self, update: Update, context: CallbackContext):
+        """Handle the /duetasks command to view tasks sorted by due date."""
+        try:
+            # Log the request
+            username = update.effective_user.username
+            logging.info(f"User {username} requested tasks sorted by due date")
+            
+            try:
+                # Get tasks sorted by due date
+                message, reply_markup = self.task_manager.get_due_tasks_message()
+                
+                # Reply with the tasks
+                update.message.reply_text(
+                    message, 
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=reply_markup
+                )
+            except Exception as e:
+                logging.error(f"Error getting due tasks: {str(e)}")
+                update.message.reply_text(
+                    f"Error retrieving tasks by due date: {str(e)}"
+                )
+        except Exception as e:
+            logging.error(f"Error in duetasks_command: {str(e)}")
+            update.message.reply_text(
+                "Sorry, something went wrong. Please try again later."
+            )
     
     def syncokrs_command(self, update: Update, context: CallbackContext):
         """Handle the /syncokrs command to sync OKRs from the Google Sheet."""
@@ -238,8 +300,8 @@ class InternBot:
         data = query.data
         
         # Handle "done" button clicks
-        if data.startswith('done_'):
-            task_id = data.replace('done_', '')
+        if data.startswith('done:'):
+            task_id = data.replace('done:', '')
             self.handle_task_done(query, task_id)
         
         # Handle OKR update button clicks
