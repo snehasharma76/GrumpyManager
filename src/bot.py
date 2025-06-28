@@ -148,15 +148,19 @@ class InternBot:
         help_text = (
             "*InternBot - Your Startup Accountability Partner*\n\n"
             "*Commands:*\n"
-            "• `/task [Priority] [Description] -c [Category] -d [YYYY-MM-DD]` - Add a new task\n"
+            "• `/task [Priority] [Description] -c [Category] -d [YYYY-MM-DD] -a [Assignee]` - Add a new task\n"
             "  Priority must be P1 (High), P2 (Medium), or P3 (Low)\n"
             "  Category is optional (default: General)\n"
             "  Due date is optional in YYYY-MM-DD format\n"
-            "  Example: `/task P1 Draft investor email -c Partnerships -d 2025-07-05`\n\n"
+            "  Assignee is optional (default: yourself)\n"
+            "  Example: `/task P1 Draft investor email -c Partnerships -d 2025-07-05 -a teammate`\n\n"
             "• `/mytasks` - View your open tasks\n\n"
             "• `/alltasks` - View all team members' tasks\n\n"
             "• `/duetasks` - View tasks sorted by due date\n\n"
             "• `/syncokrs` - Sync OKRs from the Google Sheet\n\n"
+            "*Task Completion:*\n"
+            "When marking a task as done, you'll be prompted to provide a link to your completed work (document, presentation, etc.).\n"
+            "This helps with accountability and makes it easier for the team to review your work.\n\n"
             "*Daily Schedule (IST):*\n"
             "• *10:00 AM* - Daily planning reminder\n"
             "• *11:00 AM* - Nudge for missing tasks\n"
@@ -302,17 +306,30 @@ class InternBot:
         # Handle "done" button clicks
         if data.startswith('done:'):
             task_id = data.replace('done:', '')
-            self.handle_task_done(query, task_id)
+            # Store task_id in context for the conversation
+            context.user_data['completing_task_id'] = task_id
+            
+            # Ask for a completion link
+            query.answer("Please provide a link to your completed work (or type 'none' if not applicable)")
+            query.message.reply_text(
+                "📎 Please send a link to your completed work (document, presentation, etc.)\n"
+                "Or type 'none' if there's no link to share."
+            )
+            
+            # Set the conversation state
+            context.user_data['awaiting_completion_link'] = True
+            
+            # Don't mark as done yet - we'll do that after getting the link
         
         # Handle OKR update button clicks
         elif data.startswith('okr_'):
             okr_id = data.replace('okr_', '')
             self.handle_okr_update(query, okr_id)
     
-    def handle_task_done(self, query, task_id):
-        """Handle marking a task as done."""
+    def handle_task_done(self, query, task_id, completion_link=None):
+        """Handle marking a task as done with an optional completion link."""
         # Mark the task as done
-        success = self.task_manager.mark_task_as_done(task_id)
+        success = self.task_manager.mark_task_as_done(task_id, completion_link)
         
         if success:
             # Edit the original message to show the task as done
@@ -377,12 +394,46 @@ class InternBot:
         )
     
     def message_handler(self, update: Update, context: CallbackContext):
-        """Handle text messages for OKR updates."""
+        """Handle text messages."""
         # Get the user's username
         username = update.effective_user.username
         
         if not username:
+            update.message.reply_text("Please set a username in your Telegram settings first.")
             return
+        
+        # Check if we're waiting for a completion link
+        if 'awaiting_completion_link' in context.user_data and context.user_data['awaiting_completion_link']:
+            # Get the task ID
+            task_id = context.user_data.get('completing_task_id')
+            
+            if task_id:
+                # Get the link from the message
+                link = update.message.text.strip()
+                
+                # If the user typed 'none', set link to None
+                if link.lower() == 'none':
+                    link = None
+                
+                # Mark the task as done with the link
+                success = self.task_manager.mark_task_as_done(task_id, link)
+                
+                # Clear the conversation state
+                context.user_data.pop('awaiting_completion_link', None)
+                context.user_data.pop('completing_task_id', None)
+                
+                if success:
+                    # Format the response message
+                    if link and link.lower() != 'none':
+                        update.message.reply_text(
+                            f"✅ Task marked as done with submission link: {link}\n\n"
+                            f"Great job completing this task!"
+                        )
+                    else:
+                        update.message.reply_text("✅ Task marked as done!")
+                else:
+                    update.message.reply_text("❌ Failed to mark task as done. Please try again.")
+                return
         
         # Check if we're waiting for an OKR update from this user
         if username in self.conversation_state and self.conversation_state[username]['waiting_for'] == 'okr_update':

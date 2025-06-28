@@ -28,14 +28,14 @@ class TaskManager:
     
     def parse_task_command(self, command_text):
         """
-        Parse a task command to extract priority, description, category, and due date.
-        Format: /task [Priority] [Task Description] -c [Category] -d [Due Date]
+        Parse a task command to extract priority, description, category, due date, and assignee.
+        Format: /task [Priority] [Task Description] -c [Category] -d [Due Date] -a [Assignee]
         
         Args:
             command_text (str): The full command text
         
         Returns:
-            tuple: (priority, description, category, due_date) or None if invalid format
+            tuple: (priority, description, category, due_date, assignee) or None if invalid format
         """
         # Remove the '/task' command prefix
         text = command_text.replace('/task', '', 1).strip()
@@ -48,6 +48,14 @@ class TaskManager:
             # Remove the due date part from the text
             text = re.sub(r'-d\s+\d{4}-\d{2}-\d{2}', '', text).strip()
         
+        # Extract assignee if present
+        assignee = None
+        assignee_match = re.search(r'-a\s+(\w+)', text)
+        if assignee_match:
+            assignee = assignee_match.group(1)
+            # Remove the assignee part from the text
+            text = re.sub(r'-a\s+\w+', '', text).strip()
+        
         # Check if the text starts with a valid priority
         priority_match = re.match(r'^(P[123])\s+(.+?)(?:\s+-c\s+(.+))?$', text)
         
@@ -58,14 +66,14 @@ class TaskManager:
         description = priority_match.group(2).strip()
         category = priority_match.group(3) if priority_match.group(3) else "General"
         
-        return priority, description, category, due_date
+        return priority, description, category, due_date, assignee
     
     def add_task(self, username, command_text):
         """
         Add a new task for a user.
         
         Args:
-            username (str): Telegram username of the user
+            username (str): Telegram username of the user who created the task
             command_text (str): The full command text
         
         Returns:
@@ -75,17 +83,22 @@ class TaskManager:
         parsed = self.parse_task_command(command_text)
         
         if not parsed:
-            return False, "Invalid format. Please use: `/task [Priority] [Description] -c [Category] -d [YYYY-MM-DD]`\nPriority must be P1, P2, or P3."
+            return False, "Invalid format. Please use: `/task [Priority] [Description] -c [Category] -d [YYYY-MM-DD] -a [Assignee]`\nPriority must be P1, P2, or P3."
         
-        priority, description, category, due_date = parsed
+        priority, description, category, due_date, assignee = parsed
+        
+        # If assignee is specified, use that, otherwise assign to the creator
+        assigned_to = assignee if assignee else username
         
         # Add the task to the sheet
-        task_id = self.sheets_manager.add_task(description, username, priority, category, due_date)
+        task_id = self.sheets_manager.add_task(description, assigned_to, priority, category, due_date)
         
         # Return success message
         priority_emoji = TASK_PRIORITIES.get(priority, '')
         due_date_msg = f" (Due: {due_date})" if due_date else ""
-        return True, f"Task added: {priority_emoji} {description} (Category: {category}){due_date_msg}"
+        assigned_msg = f" (Assigned to: @{assigned_to})" if assignee else ""
+        
+        return True, f"Task added: {priority_emoji} {description} (Category: {category}){due_date_msg}{assigned_msg}"
     
     def get_user_tasks_message(self, username):
         """
@@ -352,17 +365,18 @@ class TaskManager:
             logging.error(f"Error in get_all_open_tasks_message: {str(e)}")
             return f"Error retrieving all tasks: {str(e)}", None
     
-    def mark_task_as_done(self, task_id):
+    def mark_task_as_done(self, task_id, completion_link=None):
         """
-        Mark a task as done.
+        Mark a task as done with an optional completion link.
         
         Args:
             task_id (str): ID of the task to mark as done
+            completion_link (str, optional): URL to the completed work. Defaults to None.
         
         Returns:
             bool: True if successful, False otherwise
         """
-        return self.sheets_manager.mark_task_as_done(task_id)
+        return self.sheets_manager.mark_task_as_done(task_id, completion_link)
     
     def get_end_of_day_summary(self):
         """

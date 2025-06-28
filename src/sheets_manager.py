@@ -225,12 +225,13 @@ class SheetsManager:
             # Return empty list instead of raising exception
             return []
     
-    def mark_task_as_done(self, task_id):
+    def mark_task_as_done(self, task_id, completion_link=None):
         """
-        Mark a task as done in the Task_Log sheet.
+        Mark a task as done in the Task_Log sheet with an optional completion link.
         
         Args:
             task_id (str): ID of the task to mark as done
+            completion_link (str, optional): URL to the completed work. Defaults to None.
         
         Returns:
             bool: True if successful, False otherwise
@@ -252,6 +253,20 @@ class SheetsManager:
             # Update the completion date
             completion_date = datetime.now(IST_TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')
             self.task_log.update_cell(task_row, 8, completion_date)
+            
+            # Add completion link if provided
+            if completion_link:
+                # Check if Completion_Link column exists, if not, add it
+                headers = self.task_log.row_values(1)
+                if 'Completion_Link' not in headers:
+                    # Add the new column header
+                    self.task_log.update_cell(1, len(headers) + 1, 'Completion_Link')
+                
+                # Find the column index for Completion_Link
+                completion_link_col = headers.index('Completion_Link') + 1 if 'Completion_Link' in headers else len(headers) + 1
+                
+                # Update the completion link
+                self.task_log.update_cell(task_row, completion_link_col, completion_link)
             
             return True
         

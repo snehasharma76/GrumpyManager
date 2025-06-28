@@ -138,8 +138,8 @@ GOOGLE_SHEET_ID=your_sheet_id
 ### Bot Commands
 - `/start`: Start the bot and get a welcome message
 - `/help`: Display available commands
-- `/task [Priority] [Description] -c [Category] -d [YYYY-MM-DD]`: Add a new task
-  - Example: `/task P1 Draft investor email -c Partnerships -d 2025-07-15`
+- `/task [Priority] [Description] -c [Category] -d [YYYY-MM-DD] -a [Assignee]`: Add a new task
+  - Example: `/task P1 Draft investor email -c Partnerships -d 2025-07-15 -a teammate`
 - `/mytasks`: View your open tasks
 - `/alltasks`: View all team members' tasks
 - `/duetasks`: View tasks sorted by due date
@@ -150,7 +150,8 @@ GOOGLE_SHEET_ID=your_sheet_id
    - Use the `/task` command with priority (P1, P2, P3)
    - Add a category with the `-c` flag (optional, defaults to "General")
    - Add a due date with the `-d` flag in YYYY-MM-DD format (optional)
-   - Example: `/task P1 Update website content -c Marketing -d 2025-07-10`
+   - Assign tasks to teammates with the `-a` flag (optional, defaults to yourself)
+   - Example: `/task P1 Update website content -c Marketing -d 2025-07-10 -a teammate`
 
 2. **Viewing Tasks**:
    - Use `/mytasks` to see your open tasks
@@ -162,7 +163,10 @@ GOOGLE_SHEET_ID=your_sheet_id
 
 3. **Completing Tasks**:
    - Click the "Mark as Done" button on any task
-   - The task will be updated in Google Sheets
+   - You'll be prompted to provide a link to your completed work
+   - Enter a URL to your document, presentation, or other deliverable
+   - If there's no link to share, simply type 'none'
+   - The task will be updated in Google Sheets with completion status and link
    - The message will be edited to show completion
 
 ### OKR Management
