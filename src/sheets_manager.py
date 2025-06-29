@@ -236,6 +236,11 @@ class SheetsManager:
         Returns:
             bool: True if successful, False otherwise
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"SheetsManager: Marking task {task_id} as done in Google Sheets")
+        
         # Find the task row
         all_tasks = self.task_log.get_all_records()
         task_row = None
@@ -256,17 +261,25 @@ class SheetsManager:
             
             # Add completion link if provided
             if completion_link:
+                logger.info(f"Processing completion link for task {task_id}")
                 # Check if Completion_Link column exists, if not, add it
                 headers = self.task_log.row_values(1)
                 if 'Completion_Link' not in headers:
+                    logger.info("Creating 'Completion_Link' column in Google Sheet")
                     # Add the new column header
                     self.task_log.update_cell(1, len(headers) + 1, 'Completion_Link')
+                    logger.info("'Completion_Link' column created successfully")
+                else:
+                    logger.info("'Completion_Link' column already exists")
                 
                 # Find the column index for Completion_Link
                 completion_link_col = headers.index('Completion_Link') + 1 if 'Completion_Link' in headers else len(headers) + 1
+                logger.info(f"Completion_Link column index: {completion_link_col}")
                 
                 # Update the completion link
+                logger.info(f"Storing completion link in cell ({task_row}, {completion_link_col})")
                 self.task_log.update_cell(task_row, completion_link_col, completion_link)
+                logger.info(f"Completion link stored successfully for task {task_id}")
             
             return True
         

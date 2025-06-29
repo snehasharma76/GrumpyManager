@@ -27,8 +27,22 @@ class OKRManager:
         Returns:
             bool: True if successful
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info("Syncing OKRs from Google Sheet")
+        
         # Get all OKRs from the sheet
         all_okrs = self.sheets_manager.get_all_okrs()
+        logger.info(f"Retrieved {len(all_okrs)} OKRs from Google Sheet")
+        
+        # Debug: Print all column names from the first OKR
+        if all_okrs:
+            logger.info(f"Available columns in OKR sheet: {list(all_okrs[0].keys())}")
+            for okr in all_okrs:
+                logger.info(f"OKR data: {okr}")
+        else:
+            logger.warning("No OKRs found in the sheet")
         
         # Filter for active OKRs (current date is between start and end date)
         today = datetime.now(IST_TIMEZONE).date()
@@ -43,8 +57,10 @@ class OKRManager:
                     self.active_okrs.append(okr)
             except (ValueError, KeyError):
                 # Skip OKRs with invalid date formats
+                logger.warning(f"Skipping OKR with invalid date format: {okr.get('Goal_Name', 'Unknown')}")
                 continue
         
+        logger.info(f"Found {len(self.active_okrs)} active OKRs")
         return True
     
     def get_okr_update_keyboard(self):
@@ -77,6 +93,78 @@ class OKRManager:
             ])
         
         return message, InlineKeyboardMarkup(keyboard)
+    
+    def generate_okr_summary(self):
+        """
+        Generate a summary of all active OKRs.
+        
+        Returns:
+            str: Formatted summary of active OKRs
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        if not self.active_okrs:
+            return "No active OKRs found. Please check the Google Sheet."
+        
+        # Group OKRs by owner
+        okrs_by_owner = {}
+        for okr in self.active_okrs:
+            owner = okr.get('Owner', 'Unassigned')
+            if owner not in okrs_by_owner:
+                okrs_by_owner[owner] = []
+            okrs_by_owner[owner].append(okr)
+        
+        # Generate summary
+        summary = "📊 *OKR Summary* 📊\n\n"
+        
+        for owner, okrs in okrs_by_owner.items():
+            summary += f"👤 *{owner}*\n"
+            
+            for okr in okrs:
+                # Extract values using the exact column names from the Google Sheet as seen in the screenshot
+                goal_name = okr.get('Goal_Name', 'Unnamed Goal')
+                # The screenshot shows Target_Value, not Current_Value
+                current_value = okr.get('Current_Value', '0')  # We'll need to add this column
+                target_value = okr.get('Target_Value', '0')
+                start_value = okr.get('Start_Value', '0')
+                
+                # Log the values for debugging
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"OKR values - Goal: {goal_name}, Start: {start_value}, Current: {current_value}, Target: {target_value}")
+                
+                # Calculate progress percentage based on the difference between current and start values
+                # relative to the difference between target and start values
+                try:
+                    current = float(current_value)
+                    target = float(target_value)
+                    start = float(start_value)
+                    
+                    # Calculate the total change needed
+                    total_change_needed = target - start
+                    
+                    # Calculate the change achieved so far
+                    change_achieved = current - start
+                    
+                    if total_change_needed != 0:  # Avoid division by zero
+                        progress = (change_achieved / total_change_needed) * 100
+                        progress_str = f"{progress:.1f}%"
+                    else:
+                        progress_str = "N/A"
+                except (ValueError, TypeError):
+                    progress_str = "N/A"
+                
+                summary += f"  • {goal_name}: {start_value} → {current_value} → {target_value} ({progress_str})\n"
+            
+            summary += "\n"
+        
+        # Add timestamp
+        now = datetime.now(IST_TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')
+        summary += f"_Last updated: {now}_"
+        
+        logger.info("Generated OKR summary")
+        return summary
     
     def get_okr_by_id(self, okr_id):
         """

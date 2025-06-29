@@ -283,18 +283,34 @@ class InternBot:
             )
     
     def syncokrs_command(self, update: Update, context: CallbackContext):
-        """Handle the /syncokrs command to sync OKRs from the Google Sheet."""
+        """Handle the /syncokrs command to sync OKRs from the Google Sheet and display a summary."""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info("Handling /syncokrs command")
+        
+        # First, let the user know we're syncing
+        update.message.reply_text("🔄 Syncing OKRs from Google Sheet...")
+        
         # Sync OKRs
         success = self.okr_manager.sync_okrs()
         
         if success:
+            # Generate OKR summary
+            logger.info("Generating OKR summary")
+            summary = self.okr_manager.generate_okr_summary()
+            
+            # Send the summary
             update.message.reply_text(
-                "✅ OKRs synced successfully from the Google Sheet."
+                f"✅ OKRs synced successfully!\n\n{summary}",
+                parse_mode=ParseMode.MARKDOWN
             )
+            logger.info("OKR summary sent successfully")
         else:
             update.message.reply_text(
                 "❌ Failed to sync OKRs. Please check the Google Sheet."
             )
+            logger.error("Failed to sync OKRs")
     
     def button_callback(self, update: Update, context: CallbackContext):
         """Handle button callbacks."""
@@ -306,20 +322,45 @@ class InternBot:
         # Handle "done" button clicks
         if data.startswith('done:'):
             task_id = data.replace('done:', '')
+            
+            # Create inline keyboard with options for link submission
+            keyboard = [
+                [InlineKeyboardButton("✅ Mark as Done (No Link)", callback_data=f"nolink:{task_id}")],
+                [InlineKeyboardButton("📎 Add Link to Completed Work", callback_data=f"addlink:{task_id}")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            # Acknowledge the callback query
+            query.answer()
+            
+            # Ask user to choose an option
+            query.message.reply_text(
+                "How would you like to complete this task?",
+                reply_markup=reply_markup
+            )
+        
+        # Handle "no link" button clicks
+        elif data.startswith('nolink:'):
+            task_id = data.replace('nolink:', '')
+            query.answer("Marking task as done without a link")
+            self.handle_task_done(query, task_id, None)
+        
+        # Handle "add link" button clicks
+        elif data.startswith('addlink:'):
+            task_id = data.replace('addlink:', '')
             # Store task_id in context for the conversation
             context.user_data['completing_task_id'] = task_id
             
+            # Acknowledge the callback query
+            query.answer()
+            
             # Ask for a completion link
-            query.answer("Please provide a link to your completed work (or type 'none' if not applicable)")
             query.message.reply_text(
-                "📎 Please send a link to your completed work (document, presentation, etc.)\n"
-                "Or type 'none' if there's no link to share."
+                "📎 Please send a link to your completed work (document, presentation, etc.)"
             )
             
             # Set the conversation state
             context.user_data['awaiting_completion_link'] = True
-            
-            # Don't mark as done yet - we'll do that after getting the link
         
         # Handle OKR update button clicks
         elif data.startswith('okr_'):
@@ -332,12 +373,32 @@ class InternBot:
         success = self.task_manager.mark_task_as_done(task_id, completion_link)
         
         if success:
-            # Edit the original message to show the task as done
-            message = query.message.text
-            
-            # Find the task line in the message
+            # Get task details for a more informative message
             all_tasks = self.sheets_manager.task_log.get_all_records()
             task = next((t for t in all_tasks if t['Task_ID'] == task_id), None)
+            
+            # Get task description
+            task_description = task.get('Description', 'this task') if task else 'this task'
+            
+            # Send a confirmation message
+            if completion_link:
+                query.message.reply_text(
+                    f"✅ *Task completed successfully!*\n\n"
+                    f"📝 *Task:* {task_description}\n"
+                    f"🔗 *Submission:* {completion_link}\n\n"
+                    f"Great job completing this task!",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            else:
+                query.message.reply_text(
+                    f"✅ *Task completed successfully!*\n\n"
+                    f"📝 *Task:* {task_description}\n\n"
+                    f"Great job completing this task!",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            
+            # Edit the original message to show the task as done
+            message = query.message.text
             
             if task:
                 # Create a pattern to find the task line
@@ -411,8 +472,16 @@ class InternBot:
                 # Get the link from the message
                 link = update.message.text.strip()
                 
-                # If the user typed 'none', set link to None
-                if link.lower() == 'none':
+                # Validate the link format if provided
+                if link.lower() != 'none':
+                    # Simple URL validation (starts with http:// or https://)
+                    if not (link.startswith('http://') or link.startswith('https://')):
+                        update.message.reply_text(
+                            "⚠️ Please provide a valid URL starting with http:// or https:// \n"
+                            "Or type 'none' if there's no link to share."
+                        )
+                        return
+                else:
                     link = None
                 
                 # Mark the task as done with the link
@@ -423,14 +492,28 @@ class InternBot:
                 context.user_data.pop('completing_task_id', None)
                 
                 if success:
+                    # Get task details for a more informative message
+                    all_tasks = self.sheets_manager.task_log.get_all_records()
+                    task = next((t for t in all_tasks if t['Task_ID'] == task_id), None)
+                    
+                    task_description = task.get('Description', 'this task') if task else 'this task'
+                    
                     # Format the response message
                     if link and link.lower() != 'none':
                         update.message.reply_text(
-                            f"✅ Task marked as done with submission link: {link}\n\n"
-                            f"Great job completing this task!"
+                            f"✅ *Task completed successfully!*\n\n"
+                            f"📝 *Task:* {task_description}\n"
+                            f"🔗 *Submission:* {link}\n\n"
+                            f"Great job completing this task!",
+                            parse_mode=ParseMode.MARKDOWN
                         )
                     else:
-                        update.message.reply_text("✅ Task marked as done!")
+                        update.message.reply_text(
+                            f"✅ *Task completed successfully!*\n\n"
+                            f"📝 *Task:* {task_description}\n\n"
+                            f"Great job completing this task!",
+                            parse_mode=ParseMode.MARKDOWN
+                        )
                 else:
                     update.message.reply_text("❌ Failed to mark task as done. Please try again.")
                 return

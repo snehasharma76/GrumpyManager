@@ -37,6 +37,11 @@ class TaskManager:
         Returns:
             tuple: (priority, description, category, due_date, assignee) or None if invalid format
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"Parsing task command: {command_text}")
+        
         # Remove the '/task' command prefix
         text = command_text.replace('/task', '', 1).strip()
         
@@ -50,11 +55,14 @@ class TaskManager:
         
         # Extract assignee if present
         assignee = None
-        assignee_match = re.search(r'-a\s+(\w+)', text)
+        assignee_match = re.search(r'-a\s+([\w_]+)', text)
         if assignee_match:
             assignee = assignee_match.group(1)
+            logger.info(f"Assignee found: {assignee}")
             # Remove the assignee part from the text
-            text = re.sub(r'-a\s+\w+', '', text).strip()
+            text = re.sub(r'-a\s+[\w_]+', '', text).strip()
+        else:
+            logger.info("No assignee specified in command")
         
         # Check if the text starts with a valid priority
         priority_match = re.match(r'^(P[123])\s+(.+?)(?:\s+-c\s+(.+))?$', text)
@@ -376,6 +384,15 @@ class TaskManager:
         Returns:
             bool: True if successful, False otherwise
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"Marking task {task_id} as done")
+        if completion_link:
+            logger.info(f"Completion link provided: {completion_link}")
+        else:
+            logger.info("No completion link provided")
+            
         return self.sheets_manager.mark_task_as_done(task_id, completion_link)
     
     def get_end_of_day_summary(self):

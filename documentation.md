@@ -163,18 +163,61 @@ GOOGLE_SHEET_ID=your_sheet_id
 
 3. **Completing Tasks**:
    - Click the "Mark as Done" button on any task
-   - You'll be prompted to provide a link to your completed work
-   - Enter a URL to your document, presentation, or other deliverable
-   - If there's no link to share, simply type 'none'
-   - The task will be updated in Google Sheets with completion status and link
-   - The message will be edited to show completion
+   - You'll be presented with two options:
+     - "✅ Mark as Done (No Link)" - Completes the task immediately without a link
+     - "📎 Add Link to Completed Work" - Allows you to submit a link to your work
+   - If you choose to add a link, enter a valid URL starting with http:// or https://
+   - The task will be updated in Google Sheets with completion status and optional link
+   - You'll receive a confirmation message showing the completed task details
+
+### Task Assignment Notes
+
+- When using the `-a` flag to assign tasks, provide the Telegram username **without** the @ symbol
+- For usernames with underscores (e.g., `Sethu_Raman_O`), make sure to include the full username
+- Example: `/task P1 Create presentation -c Marketing -a Sethu_Raman_O`
+- If the assignee doesn't have a Telegram username set, they'll need to create one in their Telegram settings
+
+### Troubleshooting
+
+1. **Task Assignment Issues**:
+   - Ensure you're using the correct format for the username (no @ symbol)
+   - Check that the username exists and is spelled correctly
+   - Verify that the user has set up a Telegram username
+
+2. **Link Submission Issues**:
+   - Make sure to provide a valid URL starting with http:// or https://
+   - If you don't see the two options after clicking "Mark as Done", restart the bot
+   - If you encounter any errors during link submission, check the bot logs
+   - Links are stored in the "Completion_Link" column in Google Sheets
+
+3. **Google Sheets Integration**:
+   - Ensure the service account has edit access to the Google Sheet
+   - Check that all required columns exist in the sheet
+   - The bot will automatically create missing columns as needed
 
 ### OKR Management
 1. **Syncing OKRs**:
    - Use `/syncokrs` to sync OKRs from Google Sheets
-   - The bot will confirm successful syncing
+   - The bot will sync OKRs and display a summary of all active OKRs
+   - OKRs are grouped by owner for easy reading
 
-2. **Updating OKR Progress**:
+2. **OKR Progress Calculation**:
+   - Progress is calculated based on the journey from start value to target value
+   - Formula: `(current_value - start_value) / (target_value - start_value) * 100%`
+   - The summary shows the complete journey: `start_value → current_value → target_value`
+   - This provides a clear picture of progress made from the starting point
+
+3. **Required OKR Sheet Structure**:
+   - `OKR_ID`: Unique identifier for each OKR
+   - `Goal_Name`: Name or description of the objective
+   - `Owner`: Person responsible for the OKR
+   - `Start_Value`: Initial value at the beginning of the period
+   - `Current_Value`: Current progress value
+   - `Target_Value`: Target value to achieve
+   - `Period_Start_Date`: Start date in YYYY-MM-DD format
+   - `Period_End_Date`: End date in YYYY-MM-DD format
+
+4. **Updating OKR Progress**:
    - During end-of-day summary, you'll see OKR update buttons
    - Click on an OKR to update its progress
    - Enter the new progress value when prompted
