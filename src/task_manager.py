@@ -159,13 +159,21 @@ class TaskManager:
             
             # Process sorted tasks
             for priority, task_id, description, category, due_date in sorted_tasks:
+                # Get the correct priority emoji based on the task's priority
                 priority_emoji = TASK_PRIORITIES.get(priority, '⚪')
-                task_text = f"{priority_emoji} {description}"
+                
+                # Create the task text
+                task_text = f"{description}"
                 
                 # Add due date if available
                 due_date_text = f" (Due: {due_date})" if due_date else ""
                 
-                message += f"• {task_text} _{category}_{due_date_text}\n"
+                # Add the task to the message with proper formatting and priority emoji
+                message += f"• {priority_emoji} {task_text} _{category}_{due_date_text}\n"
+                
+                # Log the priority and emoji for debugging
+                import logging
+                logging.info(f"User task priority: {priority}, Emoji: {priority_emoji}, Description: {task_text}")
                 
                 # Truncate description if too long
                 if len(description) > 20:
@@ -176,7 +184,7 @@ class TaskManager:
                 keyboard.append([
                     InlineKeyboardButton(
                         f"✅ Mark '{display_desc}' as Done", 
-                        callback_data=f"done_{task_id}"
+                        callback_data=f"done:{task_id}"
                     )
                 ])
             
@@ -251,10 +259,17 @@ class TaskManager:
                 category = task.get('Category', 'General')
                 task_id = task.get('Task_ID', 'unknown')
                 
-                # Format task
+                # Get the correct priority emoji based on the task's priority
                 priority_emoji = TASK_PRIORITIES.get(priority, '⚪')
-                task_text = f"{priority_emoji} {description}"
-                message += f"• {task_text} (@{username}) _{category}_\n"
+                
+                # Create the task text
+                task_text = f"{description}"
+                
+                # Add the task to the message with proper formatting and priority emoji
+                message += f"• {priority_emoji} {task_text} (@{username}) _{category}_\n"
+                
+                # Log the priority and emoji for debugging
+                logging.info(f"Due task priority: {priority}, Emoji: {priority_emoji}, Description: {task_text}")
                 
                 # Truncate description if too long
                 if len(description) > 15:
@@ -339,16 +354,22 @@ class TaskManager:
                 user_tasks[username].sort(key=lambda x: x['Priority'])
                 
                 for task in user_tasks[username]:
-                    priority_emoji = TASK_PRIORITIES.get(task['Priority'], '⚪')
-                    task_text = f"{priority_emoji} {task['Task_Description']}"
+                    # Get the correct priority emoji based on the task's priority
+                    priority = task['Priority']  # This should be 'P1', 'P2', or 'P3'
+                    priority_emoji = TASK_PRIORITIES.get(priority, '⚪')
+                    
+                    # Create the task text with the priority emoji
+                    task_text = f"{task['Task_Description']}"
                     
                     # Add due date if available
                     due_date_text = f" (Due: {task['Due_Date']})" if task['Due_Date'] else ""
                     
-                    # Escape any potential problematic characters in task description and category
-                    # Use proper Markdown formatting with clear boundaries
-                    message += f"• {task_text} _{task['Category']}_"
+                    # Add the task to the message with proper formatting and priority emoji
+                    message += f"• {priority_emoji} {task_text} _{task['Category']}_"
                     message += f"{due_date_text}\n"
+                    
+                    # Log the priority and emoji for debugging
+                    logging.info(f"Task priority: {priority}, Emoji: {priority_emoji}, Description: {task_text}")
                     
                     # Truncate description if too long
                     description = task['Task_Description']
