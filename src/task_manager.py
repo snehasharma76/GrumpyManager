@@ -301,8 +301,10 @@ class TaskManager:
         """
         try:
             import logging
+            logging.info("Getting all open tasks")
             # Get all open tasks
             tasks = self.sheets_manager.get_all_open_tasks()
+            logging.info(f"Total tasks in sheet: {len(tasks)}")
             
             if not tasks:
                 return "There are no open tasks.", None
@@ -339,15 +341,16 @@ class TaskManager:
             
             # Sort users alphabetically
             sorted_users = sorted(user_tasks.keys())
+            logging.info(f"Found {len(tasks)} open tasks for {len(sorted_users)} users")
             
-            # Create message text
+            # Create message text - use double asterisks for better Markdown compatibility
             message = "**All Open Tasks**\n\n"
             
             # Create inline keyboard buttons
             keyboard = []
             
             for username in sorted_users:
-                # Use a more reliable formatting for usernames
+                # Use double asterisks for better Markdown compatibility
                 message += f"\n**@{username}**:\n"
                 
                 # Sort tasks by priority (P1 first)
@@ -359,24 +362,21 @@ class TaskManager:
                     priority_emoji = TASK_PRIORITIES.get(priority, '⚪')
                     
                     # Create the task text with the priority emoji
-                    task_text = f"{task['Task_Description']}"
+                    task_description = task['Task_Description']
                     
-                    # Add due date if available
+                    # Add due date if available - no markdown in this part
                     due_date_text = f" (Due: {task['Due_Date']})" if task['Due_Date'] else ""
                     
                     # Add the task to the message with proper formatting and priority emoji
-                    message += f"• {priority_emoji} {task_text} _{task['Category']}_"
+                    # Avoid using markdown in the middle of the message to prevent parsing errors
+                    message += f"• {priority_emoji} {task_description} ({task['Category']})"
                     message += f"{due_date_text}\n"
                     
-                    # Log the priority and emoji for debugging
-                    logging.info(f"Task priority: {priority}, Emoji: {priority_emoji}, Description: {task_text}")
-                    
-                    # Truncate description if too long
-                    description = task['Task_Description']
-                    if len(description) > 15:
-                        display_desc = description[:15] + '...'
+                    # Truncate description if too long for the button
+                    if len(task_description) > 15:
+                        display_desc = task_description[:15] + '...'
                     else:
-                        display_desc = description
+                        display_desc = task_description
                     
                     # Add a button to mark the task as done
                     keyboard.append([
@@ -388,6 +388,7 @@ class TaskManager:
                 
                 message += "\n"
             
+            logging.info(f"Generated message with {len(keyboard)} task buttons")
             return message, InlineKeyboardMarkup(keyboard)
             
         except Exception as e:
@@ -423,16 +424,49 @@ class TaskManager:
         Returns:
             str: Formatted end-of-day summary message
         """
+        import logging
+        
         # Get tasks completed today
         completed_tasks = self.sheets_manager.get_tasks_completed_today()
         
         # Get all open tasks
         open_tasks = self.sheets_manager.get_all_open_tasks()
         
-        # Group open tasks by priority
-        p1_tasks = [t for t in open_tasks if t['Priority'] == 'P1']
-        p2_tasks = [t for t in open_tasks if t['Priority'] == 'P2']
-        p3_tasks = [t for t in open_tasks if t['Priority'] == 'P3']
+        # Debug log task priorities
+        logging.info(f"Processing {len(open_tasks)} open tasks for EOD summary")
+        for task in open_tasks:
+            logging.info(f"Task: {task.get('Task_Description')} - Priority: {task.get('Priority')}")
+        
+        # Group open tasks by priority - use case-insensitive comparison and handle variations
+        p1_tasks = []
+        p2_tasks = []
+        p3_tasks = []
+        
+        for task in open_tasks:
+            # Log the raw priority value for debugging
+            priority = task.get('Priority', 'P3')
+            logging.info(f"Processing task: {task.get('Task_Description')} with priority: {priority}")
+            
+            # Normalize priority value for comparison
+            normalized_priority = str(priority).upper().strip()
+            
+            # Categorize based on normalized priority
+            if normalized_priority in ['P1', '1']:
+                p1_tasks.append(task)
+                logging.info(f"Task categorized as P1: {task.get('Task_Description')}")
+            elif normalized_priority in ['P2', '2']:
+                p2_tasks.append(task)
+                logging.info(f"Task categorized as P2: {task.get('Task_Description')}")
+            else:  # Default to P3 for any other value
+                p3_tasks.append(task)
+                logging.info(f"Task categorized as P3: {task.get('Task_Description')}")
+        
+        logging.info(f"Grouped tasks: P1={len(p1_tasks)}, P2={len(p2_tasks)}, P3={len(p3_tasks)}")
+        logging.info(f"P1 tasks: {[t.get('Task_Description') for t in p1_tasks]}")
+        logging.info(f"P2 tasks: {[t.get('Task_Description') for t in p2_tasks]}")
+        logging.info(f"P3 tasks: {[t.get('Task_Description') for t in p3_tasks]}")
+
+        
         
         # Create the summary message
         message = "🌙 *End of Day Summary* 🌙\n\n"
@@ -441,7 +475,7 @@ class TaskManager:
         message += "*✅ Tasks Achieved Today:*\n"
         if completed_tasks:
             for task in completed_tasks:
-                priority_emoji = TASK_PRIORITIES.get(task['Priority'], '')
+                priority_emoji = TASK_PRIORITIES.get(task.get('Priority', 'P3'), '🔵')
                 message += f"• @{task['Assigned_To_User']}: {priority_emoji} {task['Task_Description']}\n"
         else:
             message += "No tasks were completed today.\n"

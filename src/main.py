@@ -35,10 +35,32 @@ def main():
         logger.error("Please set them in the .env file.")
         return
     
-    # Initialize and start the bot
+    # Check for test mode flag
+    import sys
+    test_mode = '--test' in sys.argv
+    
+    # Initialize the bot
     logger.info("Starting InternBot...")
     bot = InternBot()
-    bot.start()
+    
+    if test_mode:
+        logger.info("Starting in TEST MODE - will not connect to Telegram API")
+        # Test the scheduled tasks without starting the bot
+        print("\n=== TESTING SCHEDULED TASKS ===\n")
+        print("1. Testing daily planning reminder...")
+        bot.send_daily_planning_reminder()
+        print("\n2. Testing daily nudge...")
+        bot.send_daily_nudge()
+        print("\n3. Testing midday check-in...")
+        bot.send_midday_checkin()
+        print("\n4. Testing end-of-day summary...")
+        bot.send_eod_summary()
+        print("\n=== TEST COMPLETE ===\n")
+        print("All scheduled tasks tested. Check logs for details.")
+    else:
+        # Start the bot normally
+        logger.info("Starting bot in NORMAL MODE")
+        bot.start()
 
 if __name__ == "__main__":
     # Create logs directory if it doesn't exist

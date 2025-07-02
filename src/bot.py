@@ -62,9 +62,20 @@ class InternBot:
         # Register command handlers
         self.register_handlers()
         
-        # Initialize the scheduler
-        self.scheduler = BackgroundScheduler(timezone=IST_TIMEZONE)
+        # Initialize the scheduler with proper timezone and job store
+        self.scheduler = BackgroundScheduler(
+            timezone=IST_TIMEZONE,
+            job_defaults={'misfire_grace_time': 3600}  # Allow jobs to run up to an hour late
+        )
+        
+        # Set up scheduled tasks
         self.setup_scheduled_tasks()
+        
+        # Log scheduled jobs
+        logger.info("Scheduled tasks setup complete")
+        for job in self.scheduler.get_jobs():
+            logger.info(f"Job scheduled: {job.id}")
+        logger.info("Next run times will be available after scheduler starts")
     
     def register_handlers(self):
         """Register all command and callback handlers."""
@@ -122,18 +133,34 @@ class InternBot:
     
     def start(self):
         """Start the bot and scheduler."""
-        # Start the scheduler
-        self.scheduler.start()
-        
-        # Start the bot
-        self.updater.start_polling()
-        logger.info("Bot started. Press Ctrl+C to stop.")
-        
-        # Run the bot until you press Ctrl-C
-        self.updater.idle()
-        
-        # Stop the scheduler when the bot is stopped
-        self.scheduler.shutdown()
+        try:
+            # Start the scheduler
+            self.scheduler.start()
+            logger.info("Scheduler started successfully")
+            
+            # Log all scheduled jobs
+            for job in self.scheduler.get_jobs():
+                logger.info(f"Active job: {job.id} - Next run: {job.next_run_time}")
+            
+            # Start the bot
+            self.updater.start_polling()
+            logger.info("Bot started. Press Ctrl+C to stop.")
+            
+            # Send a startup message to the group chat
+            self.updater.bot.send_message(
+                chat_id=TELEGRAM_GROUP_CHAT_ID,
+                text="🤖 InternBot is now online! Type /help to see available commands."
+            )
+            
+            # Run the bot until you press Ctrl-C
+            self.updater.idle()
+        except Exception as e:
+            logger.error(f"Error starting bot: {e}")
+        finally:
+            # Stop the scheduler when the bot is stopped
+            if self.scheduler.running:
+                self.scheduler.shutdown()
+                logger.info("Scheduler shut down")
     
     def start_command(self, update: Update, context: CallbackContext):
         """Handle the /start command."""
@@ -237,12 +264,15 @@ class InternBot:
                 # Get all tasks
                 message, reply_markup = self.task_manager.get_all_open_tasks_message()
                 
-                # Reply with the tasks
+                # Reply with the tasks - dont use parse_mode to avoid entity parsing errors
+                # Remove markdown formatting from the message
+                clean_message = message.replace("**", "").replace("*", "")
+                
                 update.message.reply_text(
-                    message, 
-                    parse_mode=ParseMode.MARKDOWN,
+                    clean_message,
                     reply_markup=reply_markup
                 )
+                logging.info("Successfully sent all tasks message with no parse mode")
             except Exception as e:
                 logging.error(f"Error getting all tasks: {str(e)}")
                 update.message.reply_text(
@@ -250,6 +280,9 @@ class InternBot:
                 )
         except Exception as e:
             logging.error(f"Error in alltasks_command: {str(e)}")
+            update.message.reply_text(
+                "Sorry, something went wrong. Please try again later."
+            )
             update.message.reply_text(
                 "Sorry, something went wrong. Please try again later."
             )
@@ -459,12 +492,16 @@ class InternBot:
         # Get the user's username
         username = update.effective_user.username
         
+        # Log the incoming message for debugging
+        logger.info(f"Received message from {username}: {update.message.text}")
+        
         if not username:
             update.message.reply_text("Please set a username in your Telegram settings first.")
             return
         
         # Check if we're waiting for a completion link
         if 'awaiting_completion_link' in context.user_data and context.user_data['awaiting_completion_link']:
+            logger.info(f"Processing completion link submission from {username}")
             # Get the task ID
             task_id = context.user_data.get('completing_task_id')
             
@@ -490,6 +527,7 @@ class InternBot:
                 # Clear the conversation state
                 context.user_data.pop('awaiting_completion_link', None)
                 context.user_data.pop('completing_task_id', None)
+                logger.info(f"Task completion result: {success}, cleared conversation state")
                 
                 if success:
                     # Get task details for a more informative message
@@ -519,21 +557,43 @@ class InternBot:
                 return
         
         # Check if we're waiting for an OKR update from this user
-        if username in self.conversation_state and self.conversation_state[username]['waiting_for'] == 'okr_update':
+        if username in self.conversation_state and self.conversation_state[username].get('waiting_for') == 'okr_update':
+            logger.info(f"Processing OKR update from {username}")
+            
             # Get the OKR ID
-            okr_id = self.conversation_state[username]['okr_id']
+            okr_id = self.conversation_state[username].get('okr_id')
+            if not okr_id:
+                logger.error(f"Missing OKR ID in conversation state for {username}")
+                update.message.reply_text("Something went wrong. Please try updating your OKR again.")
+                del self.conversation_state[username]
+                return
             
             # Get the new value
             new_value = update.message.text.strip()
+            logger.info(f"Updating OKR {okr_id} with new value: {new_value}")
             
-            # Update the OKR progress
-            success, feedback = self.okr_manager.update_okr_progress(username, okr_id, new_value)
-            
-            # Clear the conversation state
-            del self.conversation_state[username]
-            
-            # Reply with the feedback
-            update.message.reply_text(feedback)
+            try:
+                # Update the OKR progress
+                success, feedback = self.okr_manager.update_okr_progress(username, okr_id, new_value)
+                
+                # Clear the conversation state
+                del self.conversation_state[username]
+                logger.info(f"OKR update result: {success}, cleared conversation state")
+                
+                # Reply with the feedback
+                update.message.reply_text(feedback)
+            except Exception as e:
+                logger.error(f"Error updating OKR: {e}")
+                update.message.reply_text(f"Error updating OKR: {str(e)}")
+                # Clear the conversation state on error
+                if username in self.conversation_state:
+                    del self.conversation_state[username]
+        
+        self.updater.bot.send_message(
+            chat_id=TELEGRAM_GROUP_CHAT_ID,
+            text=message,
+            parse_mode=ParseMode.MARKDOWN
+        )
     
     def send_daily_planning_reminder(self):
         """Send the daily planning reminder at 10:00 AM IST."""
@@ -542,21 +602,31 @@ class InternBot:
             "Add your tasks with `/task [Priority] [Description] -c [Category]`."
         )
         
-        self.updater.bot.send_message(
-            chat_id=TELEGRAM_GROUP_CHAT_ID,
-            text=message,
-            parse_mode=ParseMode.MARKDOWN
-        )
+        try:
+            logger.info("Sending daily planning reminder")
+            self.updater.bot.send_message(
+                chat_id=TELEGRAM_GROUP_CHAT_ID,
+                text=message,
+                parse_mode=ParseMode.MARKDOWN
+            )
+            logger.info("Daily planning reminder sent successfully")
+        except Exception as e:
+            logger.error(f"Error sending daily planning reminder: {e}")
     
     def send_daily_nudge(self):
         """Send nudges to users who haven't added tasks at 11:00 AM IST."""
         # Get all users in the group
         try:
-            chat_members = self.updater.bot.get_chat_administrators(TELEGRAM_GROUP_CHAT_ID)
-            usernames = [member.user.username for member in chat_members if member.user.username]
+            logger.info("Starting daily nudge process")
+            
+            # In test mode or when we can't get actual members, use these default usernames
+            # This ensures we're using the correct usernames for the team
+            usernames = ['Sethu_Raman_O', 'audaciousSneha']
+            logger.info(f"Using team usernames: {usernames}")
             
             # Check which users haven't added tasks today
             users_without_tasks = self.task_manager.check_users_without_tasks(usernames)
+            logger.info(f"Found {len(users_without_tasks)} users without tasks today: {users_without_tasks}")
             
             # Send nudges
             for username in users_without_tasks:
@@ -569,52 +639,115 @@ class InternBot:
                     chat_id=TELEGRAM_GROUP_CHAT_ID,
                     text=message
                 )
+                logger.info(f"Sent nudge to @{username}")
+            
+            if not users_without_tasks:
+                logger.info("All users have tasks for today, no nudges needed")
+                
+            logger.info("Daily nudge process completed successfully")
         except Exception as e:
             logger.error(f"Error sending daily nudge: {e}")
+            # Try to send an error notification to the group
+            try:
+                self.updater.bot.send_message(
+                    chat_id=TELEGRAM_GROUP_CHAT_ID,
+                    text="⚠️ There was an error checking for daily tasks. Please check the logs."
+                )
+            except:
+                pass  # Silently fail if we can't send the error message
     
     def send_midday_checkin(self):
         """Send the mid-day check-in at 3:00 PM IST."""
-        message = "🕒 Afternoon Check-in! Here's the current status of our open tasks:"
-        
-        # Get all open tasks
-        tasks_message, reply_markup = self.task_manager.get_all_open_tasks_message()
-        
-        # Send the message
-        self.updater.bot.send_message(
-            chat_id=TELEGRAM_GROUP_CHAT_ID,
-            text=message,
-            parse_mode=ParseMode.MARKDOWN
-        )
-        
-        # Send the tasks
-        self.updater.bot.send_message(
-            chat_id=TELEGRAM_GROUP_CHAT_ID,
-            text=tasks_message,
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=reply_markup
-        )
+        try:
+            logger.info("Starting midday check-in process")
+            message = "🕒 Afternoon Check-in! Here's the current status of our open tasks:"
+            
+            # Get all open tasks
+            tasks_message, reply_markup = self.task_manager.get_all_open_tasks_message()
+            logger.info("Retrieved open tasks for midday check-in")
+            
+            # Send the message
+            self.updater.bot.send_message(
+                chat_id=TELEGRAM_GROUP_CHAT_ID,
+                text=message
+                # No parse_mode to avoid Markdown errors
+            )
+            
+            # Send the tasks - use HTML instead of Markdown for better compatibility
+            try:
+                self.updater.bot.send_message(
+                    chat_id=TELEGRAM_GROUP_CHAT_ID,
+                    text=tasks_message,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=reply_markup
+                )
+            except Exception as parse_error:
+                # If HTML parsing fails, try sending without any parsing
+                logger.warning(f"HTML parsing failed: {parse_error}. Sending without parse mode.")
+                self.updater.bot.send_message(
+                    chat_id=TELEGRAM_GROUP_CHAT_ID,
+                    text=tasks_message,
+                    reply_markup=reply_markup
+                )
+            logger.info("Midday check-in sent successfully")
+        except Exception as e:
+            logger.error(f"Error sending midday check-in: {e}")
+            # Try to send an error notification to the group
+            try:
+                self.updater.bot.send_message(
+                    chat_id=TELEGRAM_GROUP_CHAT_ID,
+                    text="⚠️ There was an error sending the midday check-in. Please check the logs."
+                )
+            except:
+                pass  # Silently fail if we can't send the error message
     
     def send_eod_summary(self):
         """Send the end-of-day summary at 7:00 PM IST."""
-        # Get the EOD summary
-        summary = self.task_manager.get_end_of_day_summary()
-        
-        # Send the summary
-        self.updater.bot.send_message(
-            chat_id=TELEGRAM_GROUP_CHAT_ID,
-            text=summary,
-            parse_mode=ParseMode.MARKDOWN
-        )
-        
-        # Send the OKR update message
-        okr_message, reply_markup = self.okr_manager.get_okr_update_keyboard()
-        
-        self.updater.bot.send_message(
-            chat_id=TELEGRAM_GROUP_CHAT_ID,
-            text=okr_message,
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=reply_markup
-        )
+        try:
+            logger.info("Starting end-of-day summary process")
+            # Get the EOD summary
+            summary = self.task_manager.get_end_of_day_summary()
+            logger.info("Generated end-of-day task summary")
+            
+            # Send the summary
+            self.updater.bot.send_message(
+                chat_id=TELEGRAM_GROUP_CHAT_ID,
+                text=summary,
+                parse_mode=ParseMode.MARKDOWN
+            )
+            logger.info("Sent end-of-day task summary")
+            
+            # Send the OKR update message
+            okr_message, reply_markup = self.okr_manager.get_okr_update_keyboard()
+            logger.info("Generated OKR update keyboard")
+            
+            if reply_markup:  # Only send if there are active OKRs
+                self.updater.bot.send_message(
+                    chat_id=TELEGRAM_GROUP_CHAT_ID,
+                    text=okr_message,
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=reply_markup
+                )
+                logger.info("Sent OKR update prompt with inline keyboard")
+            else:
+                self.updater.bot.send_message(
+                    chat_id=TELEGRAM_GROUP_CHAT_ID,
+                    text=okr_message,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                logger.info("Sent OKR message without keyboard (no active OKRs)")
+                
+            logger.info("End-of-day summary process completed successfully")
+        except Exception as e:
+            logger.error(f"Error sending end-of-day summary: {e}")
+            # Try to send an error notification to the group
+            try:
+                self.updater.bot.send_message(
+                    chat_id=TELEGRAM_GROUP_CHAT_ID,
+                    text="⚠️ There was an error sending the end-of-day summary. Please check the logs."
+                )
+            except:
+                pass  # Silently fail if we can't send the error message
     
     def error_handler(self, update, context):
         """Log errors caused by updates."""

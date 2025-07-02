@@ -192,6 +192,16 @@ class SheetsManager:
             all_tasks = self.task_log.get_all_records()
             logging.info(f"Total tasks in sheet: {len(all_tasks)}")
             
+            # Debug: Log the column headers
+            headers = self.task_log.get_all_values()[0] if self.task_log.get_all_values() else []
+            logging.info(f"Sheet headers: {headers}")
+            
+            # Debug: Log a few tasks to see the raw data
+            for i, task in enumerate(all_tasks[:3]):
+                logging.info(f"Raw task {i+1} data: {task}")
+                logging.info(f"Priority in raw data: '{task.get('Priority', 'NOT_FOUND')}'")
+
+            
             # Filter tasks by status and ensure all required keys exist
             open_tasks = []
             
@@ -199,6 +209,10 @@ class SheetsManager:
                 try:
                     # Check if this task has 'Open' status
                     if task.get('Status') == 'Open':
+                        # Debug: Log the raw priority value
+                        raw_priority = task.get('Priority', 'NOT_FOUND')
+                        logging.info(f"Task: {task.get('Task_Description')} - Raw Priority: '{raw_priority}'")
+                        
                         # Create a clean task with all required keys and default values
                         username = task.get('Assigned_To_User', 'unassigned')
                         clean_task = {
@@ -212,12 +226,20 @@ class SheetsManager:
                             'Date_Completed': task.get('Date_Completed', ''),
                             'Due_Date': task.get('Due_Date', '')
                         }
+                        
+                        # Debug: Log the clean task priority
+                        logging.info(f"Clean task priority: '{clean_task['Priority']}'")
                         open_tasks.append(clean_task)
                 except Exception as e:
                     logging.error(f"Error processing task: {e}. Task: {task}")
                     continue
             
             logging.info(f"Found {len(open_tasks)} open tasks")
+            
+            # Debug: Log priorities of all open tasks
+            priorities = [task.get('Priority', 'NONE') for task in open_tasks]
+            logging.info(f"All task priorities: {priorities}")
+            
             return open_tasks
             
         except Exception as e:
