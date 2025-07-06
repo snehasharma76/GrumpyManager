@@ -10,13 +10,15 @@ services:
     # Mount Google credentials for Sheets API
     volumes:
       - ./config/credentials.json:/app/config/credentials.json:ro
-    # Optional: persist logs if needed
-    # - ./logs:/app/logs
+      # Optional: persist logs if needed
+      # - ./logs:/app/logs
     restart: unless-stopped
+    # Use specific image configuration to avoid ContainerConfig error
+    image_pull_policy: always
     # No ports exposed (Telegram bot is outbound only)
     # command: ["python", "src/main.py"]  # Default from Dockerfile
 
 # Usage:
 # 1. Copy .env.example to .env and fill in required values.
 # 2. Place your Google service account credentials at config/credentials.json.
-# 3. Run: docker-compose up --build 
+# 3. Run: docker-compose up --build --force-recreate
