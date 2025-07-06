@@ -21,9 +21,9 @@ COPY get_updates.py ./get_updates.py
 COPY direct_message_id.py ./direct_message_id.py
 COPY test_setup.py ./test_setup.py
 
-# Create and define volumes explicitly
-RUN mkdir -p /app/config
-VOLUME /app/config
+# Copy entrypoint scripts if needed (none for now)
+
+# Expose no ports (Telegram bot is outbound only)
 
 # Set environment variables (can be overridden at runtime)
 ENV PYTHONUNBUFFERED=1
