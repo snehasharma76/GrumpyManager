@@ -138,7 +138,7 @@ class SheetsManager:
             
             # Get all tasks
             all_tasks = self.task_log.get_all_records()
-            logging.info(f"Total tasks in sheet: {len(all_tasks)}")
+            logging.info(f"Total tasks in sheet: {all_tasks}")
             
             # Get column headers to understand the data structure
             headers = self.task_log.row_values(1)
@@ -152,6 +152,7 @@ class SheetsManager:
                 try:
                     # Check if this task belongs to the user and has the right status
                     if task.get('Assigned_To_User') == username and task.get('Status') == status:
+                        logging.info(f"Found task for {username}: {task}")
                         # Create a clean task with all required keys and default values
                         clean_task = {
                             'Task_ID': task.get('Task_ID', f"unknown_{len(user_tasks)}"),

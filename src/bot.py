@@ -236,19 +236,30 @@ class InternBot:
                 # Get the user's tasks
                 message, reply_markup = self.task_manager.get_user_tasks_message(username)
                 
-                # Reply with the tasks
+                # Log the raw message for debugging
+                logging.info(f"DEBUG - Raw message content for {username}: {message}")
+                
+                # Remove Markdown formatting to avoid parsing errors
+                clean_message = message.replace('**', '').replace('*', '')
+                
+                # Log the cleaned message for debugging
+                logging.info(f"DEBUG - Cleaned message content for {username}: {clean_message}")
+                
+                # Reply with the tasks without parse_mode
                 update.message.reply_text(
-                    message, 
-                    parse_mode=ParseMode.MARKDOWN,
+                    clean_message,
                     reply_markup=reply_markup
                 )
+                logging.info(f"Successfully sent tasks for {username} with no parse mode")
             except Exception as e:
                 logging.error(f"Error getting tasks for {username}: {str(e)}")
+                logging.error(f"Error details: {type(e).__name__}, {e.__traceback__.tb_lineno}")
                 update.message.reply_text(
                     f"Error retrieving your tasks: {str(e)}"
                 )
         except Exception as e:
             logging.error(f"Error in mytasks_command: {str(e)}")
+            logging.error(f"Error details: {type(e).__name__}, {e.__traceback__.tb_lineno}")
             update.message.reply_text(
                 "Sorry, something went wrong. Please try again later."
             )
@@ -298,19 +309,30 @@ class InternBot:
                 # Get tasks sorted by due date
                 message, reply_markup = self.task_manager.get_due_tasks_message()
                 
-                # Reply with the tasks
+                # Log the raw message for debugging
+                logging.info(f"DEBUG - Raw due tasks message: {message[:200]}...")
+                
+                # Remove Markdown formatting to avoid parsing errors
+                clean_message = message.replace('**', '').replace('*', '')
+                
+                # Log the cleaned message for debugging
+                logging.info(f"DEBUG - Cleaned due tasks message: {clean_message[:200]}...")
+                
+                # Reply with the tasks without parse_mode
                 update.message.reply_text(
-                    message, 
-                    parse_mode=ParseMode.MARKDOWN,
+                    clean_message,
                     reply_markup=reply_markup
                 )
+                logging.info("Successfully sent due tasks message with no parse mode")
             except Exception as e:
                 logging.error(f"Error getting due tasks: {str(e)}")
+                logging.error(f"Error details: {type(e).__name__}, {e.__traceback__.tb_lineno}")
                 update.message.reply_text(
                     f"Error retrieving tasks by due date: {str(e)}"
                 )
         except Exception as e:
             logging.error(f"Error in duetasks_command: {str(e)}")
+            logging.error(f"Error details: {type(e).__name__}, {e.__traceback__.tb_lineno}")
             update.message.reply_text(
                 "Sorry, something went wrong. Please try again later."
             )
@@ -709,33 +731,61 @@ class InternBot:
             summary = self.task_manager.get_end_of_day_summary()
             logger.info("Generated end-of-day task summary")
             
-            # Send the summary
-            self.updater.bot.send_message(
-                chat_id=TELEGRAM_GROUP_CHAT_ID,
-                text=summary,
-                parse_mode=ParseMode.MARKDOWN
-            )
-            logger.info("Sent end-of-day task summary")
+            # Try to send with Markdown first
+            try:
+                self.updater.bot.send_message(
+                    chat_id=TELEGRAM_GROUP_CHAT_ID,
+                    text=summary,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                logger.info("Sent end-of-day task summary with Markdown")
+            except Exception as parse_error:
+                # If Markdown parsing fails, send without parse mode
+                logger.warning(f"Markdown parsing failed for EOD summary: {parse_error}. Sending without parse mode.")
+                clean_summary = summary.replace('**', '').replace('*', '')
+                self.updater.bot.send_message(
+                    chat_id=TELEGRAM_GROUP_CHAT_ID,
+                    text=clean_summary
+                )
+                logger.info("Sent end-of-day task summary without parse mode")
             
             # Send the OKR update message
             okr_message, reply_markup = self.okr_manager.get_okr_update_keyboard()
             logger.info("Generated OKR update keyboard")
             
-            if reply_markup:  # Only send if there are active OKRs
-                self.updater.bot.send_message(
-                    chat_id=TELEGRAM_GROUP_CHAT_ID,
-                    text=okr_message,
-                    parse_mode=ParseMode.MARKDOWN,
-                    reply_markup=reply_markup
-                )
-                logger.info("Sent OKR update prompt with inline keyboard")
-            else:
-                self.updater.bot.send_message(
-                    chat_id=TELEGRAM_GROUP_CHAT_ID,
-                    text=okr_message,
-                    parse_mode=ParseMode.MARKDOWN
-                )
-                logger.info("Sent OKR message without keyboard (no active OKRs)")
+            # Try to send OKR message with Markdown
+            try:
+                if reply_markup:  # Only send if there are active OKRs
+                    self.updater.bot.send_message(
+                        chat_id=TELEGRAM_GROUP_CHAT_ID,
+                        text=okr_message,
+                        parse_mode=ParseMode.MARKDOWN,
+                        reply_markup=reply_markup
+                    )
+                    logger.info("Sent OKR update prompt with inline keyboard")
+                else:
+                    self.updater.bot.send_message(
+                        chat_id=TELEGRAM_GROUP_CHAT_ID,
+                        text=okr_message,
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                    logger.info("Sent OKR message without keyboard (no active OKRs)")
+            except Exception as parse_error:
+                # If Markdown parsing fails, send without parse mode
+                logger.warning(f"Markdown parsing failed for OKR message: {parse_error}. Sending without parse mode.")
+                clean_okr_message = okr_message.replace('**', '').replace('*', '')
+                if reply_markup:
+                    self.updater.bot.send_message(
+                        chat_id=TELEGRAM_GROUP_CHAT_ID,
+                        text=clean_okr_message,
+                        reply_markup=reply_markup
+                    )
+                else:
+                    self.updater.bot.send_message(
+                        chat_id=TELEGRAM_GROUP_CHAT_ID,
+                        text=clean_okr_message
+                    )
+                logger.info("Sent OKR message without parse mode")
                 
             logger.info("End-of-day summary process completed successfully")
         except Exception as e:

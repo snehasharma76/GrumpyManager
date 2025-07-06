@@ -121,29 +121,34 @@ class TaskManager:
         try:
             import logging
             # Validate username
+            logging.info(f"DEBUG - Getting tasks for username: {username}")
             if not username or not isinstance(username, str):
+                logging.warning(f"DEBUG - Invalid username: {username}")
                 return f"Invalid username: {username}. Please set a username in your Telegram settings.", None
-                
+            
             # Get all open tasks for the user
             tasks = self.sheets_manager.get_user_tasks(username, status='Open')
+            logging.info(f"DEBUG - Retrieved {len(tasks)} tasks for {username}")
             
             if not tasks:
+                logging.info(f"DEBUG - No open tasks found for {username}")
                 return f"You (@{username}) have no open tasks.", None
             
             # Create message text
-            message = f"📋 *Tasks for @{username}*\n\n"
+            message = f"📋 Tasks for @{username}\n\n"  # Removed * formatting but kept emoji
+            logging.info(f"DEBUG - Starting message: {message}")
             
             # Create inline keyboard buttons
             keyboard = []
             
             # Sort tasks by priority (P1 first) with safe handling
-            sorted_tasks = []
+            sorted_tasks = []   
             for task in tasks:
                 # Ensure all required keys exist
                 if 'Task_ID' not in task:
                     logging.error(f"Missing Task_ID in task: {task}")
                     continue
-                    
+                
                 # Set default values for missing keys
                 task_id = task.get('Task_ID', 'unknown')
                 priority = task.get('Priority', 'P3')
@@ -151,29 +156,32 @@ class TaskManager:
                 category = task.get('Category', 'General')
                 due_date = task.get('Due_Date', '')
                 
+                logging.info(f"DEBUG - Processing task: ID={task_id}, Priority={priority}, Desc={description[:20]}...")
+                
                 # Add to sorted list with priority and due date
                 sorted_tasks.append((priority, task_id, description, category, due_date))
-            
+        
             # Sort by priority
             sorted_tasks.sort(key=lambda x: x[0])
-            
+            logging.info(f"DEBUG - Sorted {len(sorted_tasks)} tasks by priority")
+        
             # Process sorted tasks
             for priority, task_id, description, category, due_date in sorted_tasks:
                 # Get the correct priority emoji based on the task's priority
-                priority_emoji = TASK_PRIORITIES.get(priority, '⚪')
+                priority_emoji = TASK_PRIORITIES.get(priority, '⚪')  # Fixed missing emoji
                 
                 # Create the task text
                 task_text = f"{description}"
-                
+            
                 # Add due date if available
                 due_date_text = f" (Due: {due_date})" if due_date else ""
                 
                 # Add the task to the message with proper formatting and priority emoji
-                message += f"• {priority_emoji} {task_text} _{category}_{due_date_text}\n"
+                # Avoid using Markdown formatting with underscores to prevent entity parsing errors
+                message += f"• {priority_emoji} {task_text} ({category}){due_date_text}\n"
                 
                 # Log the priority and emoji for debugging
-                import logging
-                logging.info(f"User task priority: {priority}, Emoji: {priority_emoji}, Description: {task_text}")
+                logging.info(f"DEBUG - Added task to message: {priority_emoji} {task_text[:20]}... ({category})")
                 
                 # Truncate description if too long
                 if len(description) > 20:
@@ -188,11 +196,18 @@ class TaskManager:
                     )
                 ])
             
+            logging.info(f"DEBUG - Final message length: {len(message)} characters")
+            logging.info(f"DEBUG - First 100 chars of message: {message[:100]}...")
+            logging.info(f"DEBUG - Created {len(keyboard)} keyboard buttons")
+            
             return message, InlineKeyboardMarkup(keyboard)
             
         except Exception as e:
             import logging
             logging.error(f"Error in get_user_tasks_message: {str(e)}")
+            logging.error(f"Error details: {type(e).__name__}, {e.__traceback__.tb_lineno}")
+            import traceback
+            logging.error(f"Traceback: {traceback.format_exc()}")
             return f"Error retrieving tasks: {str(e)}", None
     
     def get_due_tasks_message(self):
@@ -206,18 +221,24 @@ class TaskManager:
             import logging
             from datetime import datetime
             
+            logging.info("DEBUG - Getting tasks sorted by due date")
+            
             # Get all open tasks
             tasks = self.sheets_manager.get_all_open_tasks()
+            logging.info(f"DEBUG - Retrieved {len(tasks)} total tasks")
             
             if not tasks:
+                logging.info("DEBUG - No open tasks found")
                 return "There are no open tasks with due dates.", None
-            
+        
             # Filter tasks with due dates and sort them
             due_tasks = [task for task in tasks if task.get('Due_Date')]
+            logging.info(f"DEBUG - Found {len(due_tasks)} tasks with due dates")
             
             if not due_tasks:
+                logging.info("DEBUG - No tasks with due dates set")
                 return "There are no tasks with due dates set.", None
-            
+        
             # Sort tasks by due date (closest first)
             try:
                 # Convert string dates to datetime objects for sorting
@@ -225,32 +246,38 @@ class TaskManager:
                     if task['Due_Date']:
                         try:
                             task['_due_date_obj'] = datetime.strptime(task['Due_Date'], '%Y-%m-%d')
-                        except ValueError:
+                            logging.info(f"DEBUG - Parsed date {task['Due_Date']} for task {task.get('Task_ID')}")
+                        except ValueError as ve:
+                            logging.error(f"DEBUG - Date parsing error for {task['Due_Date']}: {ve}")
                             task['_due_date_obj'] = datetime.max  # Far future for invalid dates
                     else:
                         task['_due_date_obj'] = datetime.max  # Far future for tasks with no due date
                 
                 # Sort by due date
                 due_tasks.sort(key=lambda x: x['_due_date_obj'])
+                logging.info("DEBUG - Successfully sorted tasks by due date")
             except Exception as e:
                 logging.error(f"Error sorting tasks by due date: {str(e)}")
+                logging.error(f"Error details: {type(e).__name__}, {e.__traceback__.tb_lineno}")
                 # If sorting fails, continue with unsorted tasks
-            
-            # Create message text
-            message = "*Tasks By Due Date*\n\n"
+        
+            # Create message text - removed asterisks to avoid Markdown parsing issues
+            message = "📅 Tasks By Due Date\n\n"
+            logging.info(f"DEBUG - Starting message: {message}")
             
             # Create inline keyboard buttons
             keyboard = []
-            
+        
             # Group tasks by due date
             current_date = None
             for task in due_tasks:
                 due_date = task.get('Due_Date', '')
                 
-                # Add date header if it's a new date
+                # Add date header if it's a new date - removed asterisks
                 if due_date != current_date:
                     current_date = due_date
-                    message += f"\n*Due: {due_date}*\n"
+                    message += f"\nDue: {due_date}\n"
+                    logging.info(f"DEBUG - Added date header for {due_date}")
                 
                 # Get task details
                 username = task.get('Assigned_To_User', 'unassigned')
@@ -259,6 +286,8 @@ class TaskManager:
                 category = task.get('Category', 'General')
                 task_id = task.get('Task_ID', 'unknown')
                 
+                logging.info(f"DEBUG - Processing task: ID={task_id}, Priority={priority}, User={username}")
+                
                 # Get the correct priority emoji based on the task's priority
                 priority_emoji = TASK_PRIORITIES.get(priority, '⚪')
                 
@@ -266,10 +295,11 @@ class TaskManager:
                 task_text = f"{description}"
                 
                 # Add the task to the message with proper formatting and priority emoji
-                message += f"• {priority_emoji} {task_text} (@{username}) _{category}_\n"
-                
+                # Avoid using Markdown formatting with underscores to prevent entity parsing errors
+                message += f"• {priority_emoji} {task_text} (@{username}) ({category})\n"
+            
                 # Log the priority and emoji for debugging
-                logging.info(f"Due task priority: {priority}, Emoji: {priority_emoji}, Description: {task_text}")
+                logging.info(f"DEBUG - Added task to message: {priority_emoji} {task_text[:20]}... (@{username})")
                 
                 # Truncate description if too long
                 if len(description) > 15:
@@ -285,11 +315,18 @@ class TaskManager:
                     )
                 ])
             
+            logging.info(f"DEBUG - Final message length: {len(message)} characters")
+            logging.info(f"DEBUG - First 100 chars of message: {message[:100]}...")
+            logging.info(f"DEBUG - Created {len(keyboard)} keyboard buttons")
+            
             return message, InlineKeyboardMarkup(keyboard)
             
         except Exception as e:
             import logging
             logging.error(f"Error in get_due_tasks_message: {str(e)}")
+            logging.error(f"Error details: {type(e).__name__}, {e.__traceback__.tb_lineno}")
+            import traceback
+            logging.error(f"Traceback: {traceback.format_exc()}")
             return f"Error retrieving tasks by due date: {str(e)}", None
     
     def get_all_open_tasks_message(self):
