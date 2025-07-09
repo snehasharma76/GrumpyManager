@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import logging
 import os
+os.makedirs("logs", exist_ok=True)
 from dotenv import load_dotenv
 from bot import InternBot
 
@@ -63,8 +64,5 @@ def main():
         bot.start()
 
 if __name__ == "__main__":
-    # Create logs directory if it doesn't exist
-    os.makedirs("logs", exist_ok=True)
-    
     # Start the bot
     main()
